@@ -4,8 +4,11 @@ case class ExecutionRequest(code: Runnable)
 
 class ActorWithExecutionContext extends ExtensibleActor {
 
+  // This is the executionContext used by subclasses unless they explicitly  override it
+  implicit val executionContext = ActorExecutionContext
+
   @volatile
-  private var insideActor = false
+  private var insideActor = false // this may be accessed from another thread
 
   // Runs code immediately if already within the actor, otherwise sends a self message
   object ActorExecutionContext extends ExecutionContext {
@@ -16,7 +19,6 @@ class ActorWithExecutionContext extends ExtensibleActor {
         self ! ExecutionRequest(runnable)
       }
     }
-
     override def reportFailure(t: Throwable): Unit = ExecutionContext.defaultReporter
   }
 
@@ -25,11 +27,24 @@ class ActorWithExecutionContext extends ExtensibleActor {
     override def execute(runnable: Runnable): Unit = {
       self ! ExecutionRequest(runnable)
     }
-
     override def reportFailure(t: Throwable): Unit = ExecutionContext.defaultReporter
   }
 
-  implicit val executionContext = ActorExecutionContext
+  final override def receive = wrap(enterActor, exitActor) {
+    case ExecutionRequest(code) =>
+      println(s"ActorWithExecutionContext.receive : executing self message $code")
+      code.run()
+    case otherMessage =>
+      super.receive(otherMessage)
+  }
+
+  private def enterActor() = {
+    insideActor = true
+  }
+
+  private def exitActor() = {
+    insideActor = false
+  }
 
   private def wrap[T, U](before:() => Unit, after: () => Unit)(pf: PartialFunction[T, U]): PartialFunction[T, U] = {
     return new PartialFunction[T, U] {
@@ -47,22 +62,6 @@ class ActorWithExecutionContext extends ExtensibleActor {
       }
       def isDefinedAt(value: T) = pf.isDefinedAt(value)
     }
-  }
-
-  private def enterActor() = {
-    insideActor = true
-  }
-
-  private def exitActor() = {
-    insideActor = false
-  }
-
-  final override def receive = wrap(enterActor, exitActor) {
-    case ExecutionRequest(code) =>
-      println(s"ActorWithExecutionContext.receive : executing self message $code")
-      code.run()
-    case otherMessage =>
-      super.receive(otherMessage)
   }
 
 }
