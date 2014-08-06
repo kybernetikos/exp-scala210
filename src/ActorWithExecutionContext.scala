@@ -31,22 +31,38 @@ class ActorWithExecutionContext extends ExtensibleActor {
 
   implicit val executionContext = ActorExecutionContext
 
-  final override def receive = {
+  private def wrap[T, U](before:() => Unit, after: () => Unit)(pf: PartialFunction[T, U]): PartialFunction[T, U] = {
+    return new PartialFunction[T, U] {
+      def apply(value: T): U = {
+        var result: Option[U] = None
+        if (pf.isDefinedAt(value)) {
+          try {
+            before()
+            result = Some(pf(value))
+          } finally {
+            after()
+          }
+        }
+        result.get
+      }
+      def isDefinedAt(value: T) = pf.isDefinedAt(value)
+    }
+  }
+
+  private def enterActor() = {
+    insideActor = true
+  }
+
+  private def exitActor() = {
+    insideActor = false
+  }
+
+  final override def receive = wrap(enterActor, exitActor) {
     case ExecutionRequest(code) =>
-      try {
-        insideActor = true
-        println(s"ActorWithExecutionContext.receive : executing self message $code")
-        code.run()
-      } finally {
-        insideActor = false
-      }
-    case message =>
-      try {
-        insideActor = true
-        super.receive(message)
-      } finally {
-        insideActor = false
-      }
+      println(s"ActorWithExecutionContext.receive : executing self message $code")
+      code.run()
+    case otherMessage =>
+      super.receive(otherMessage)
   }
 
 }
