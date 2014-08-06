@@ -6,7 +6,7 @@ import scala.concurrent.duration._
 class MyActor(destination: ActorRef) extends ActorWithExecutionContext {
   implicit val timeout: akka.util.Timeout = 4 seconds
 
-  override implicit val executionContext = DelayedActorExecutionContext // this results in 3 self messages instead of 1
+  // override implicit val executionContext = DelayedActorExecutionContext // this results in 3 self messages instead of 1
 
   addReceive {
     case Echo(msg) =>
